@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppt-navigation-generator"
+version = "0.1.0"
+description = "Generate PPT slides with navigation bars from markdown outlines."
+authors = [{ name = "JHTNT" }]
+requires-python = ">=3.10"
+dependencies = [
+    "python-pptx>=0.6.23",
+]
+
+[project.scripts]
+ppt-nav = "ppt_nav.cli:run"
