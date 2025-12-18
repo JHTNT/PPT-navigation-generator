@@ -7,21 +7,26 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 from ppt_nav.outline import Outline, OutlineItem, SlidePlanEntry
 
 
 class PresentationBuilder:
-    def __init__(self) -> None:
+    def __init__(self, font_size: Optional[float] = None) -> None:
         self.nav_side_margin = Inches(0)
         self.nav_top_margin = Inches(0)
-        self.nav_row_height = Inches(0.4)
         self.nav_separator_width = Inches(0.04)
         self.body_margin_top = Inches(0.4)
         self.body_side_margin = Inches(0.5)
         self.inactive_color = RGBColor(200, 200, 200)
         self.active_color = RGBColor(0, 0, 0)
+        # Base font size in points for navigation and body
+        self.font_size_pt = font_size if font_size and font_size > 0 else 28.0
+        # Scale navigation row height with font size (28pt -> 0.5" baseline)
+        base_nav_height_in = 0.5
+        scale = self.font_size_pt / 28.0
+        self.nav_row_height = Inches(base_nav_height_in * scale)
         self._target_width = Inches(16)
         self._target_height = Inches(9)
         self._slide_width = 0
@@ -97,6 +102,7 @@ class PresentationBuilder:
             para.alignment = PP_ALIGN.CENTER
             run = para.add_run()
             run.text = title
+            run.font.size = Pt(self.font_size_pt)
             if title == active_title:
                 run.font.bold = True
                 run.font.color.rgb = self.active_color
@@ -152,5 +158,6 @@ class PresentationBuilder:
         tf.paragraphs[0].space_after = 0
         tf.paragraphs[0].space_before = 0
         tf.paragraphs[0].line_spacing = 1.1
+        para.font.size = Pt(self.font_size_pt)
         para.text = ""
         tf.add_paragraph()
