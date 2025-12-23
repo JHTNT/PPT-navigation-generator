@@ -30,8 +30,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--font-size",
         type=float,
-        default=28.0,
-        help="Base font size in points for navigation and content (default: 28).",
+        default=22.0,
+        help="Base font size in points for navigation and content (default: 22).",
     )
     parser.add_argument(
         "--template",

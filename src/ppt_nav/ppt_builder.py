@@ -23,10 +23,10 @@ class PresentationBuilder:
         self.inactive_color = RGBColor(200, 200, 200)
         self.active_color = RGBColor(0, 0, 0)
         # Base font size in points for navigation and body
-        self.font_size_pt = font_size if font_size and font_size > 0 else 28.0
-        # Scale navigation row height with font size (28pt -> 0.5" baseline)
-        base_nav_height_in = 0.5
-        scale = self.font_size_pt / 28.0
+        self.font_size_pt = font_size if font_size and font_size > 0 else 22.0
+        # Scale navigation row height with font size (22pt -> 0.4" baseline)
+        base_nav_height_in = 0.4
+        scale = self.font_size_pt / 22.0
         self.nav_row_height = Inches(base_nav_height_in * scale)
         self._target_width = Inches(16)
         self._target_height = Inches(9)
@@ -79,10 +79,10 @@ class PresentationBuilder:
         slide,
         sections: Iterable[OutlineItem],
         plan_entry: SlidePlanEntry,
-    ) -> float:
+    ) -> int:
         current_section = plan_entry.section
         current_child = plan_entry.child
-        top = self.nav_top_margin
+        top = int(self.nav_top_margin)
         section_titles = [section.title for section in sections]
         top = self._draw_nav_row(slide, section_titles, current_section.title, top)
         top = self._draw_separator(slide, top)
@@ -93,13 +93,14 @@ class PresentationBuilder:
             top = self._draw_separator(slide, top)
         return top
 
-    def _draw_nav_row(self, slide, titles, active_title: Optional[str], top: float) -> float:
+    def _draw_nav_row(self, slide, titles, active_title: Optional[str], top: int) -> int:
         if not titles:
             return top
         if self._slide_width <= 0:
             raise ValueError("Slide width is not set.")
         count = len(titles)
-        usable_width = self._slide_width - self.nav_side_margin * 2
+        side_margin = int(self.nav_side_margin)
+        usable_width = int(self._slide_width - side_margin * 2)
         # Keep a constant padding share per tab so whitespace feels uniform, then add
         # extra width based on character count to honor the "size by words" request.
         char_counts = [max(len(title.strip()) or len(title), 1) for title in titles]
@@ -107,16 +108,17 @@ class PresentationBuilder:
         base_weight = max(int(avg_chars * 0.5), 4)
         tab_weights = [base_weight + chars for chars in char_counts]
         total_weight = sum(tab_weights)
-        left = self.nav_side_margin
-        allocated_width = 0.0
+        left = side_margin
+        allocated_width = 0
+        row_height = int(self.nav_row_height)
         for idx, title in enumerate(titles):
             weight = tab_weights[idx]
             if idx == count - 1:
                 item_width = usable_width - allocated_width
             else:
-                item_width = usable_width * (weight / total_weight)
+                item_width = int(round(usable_width * (weight / total_weight)))
                 allocated_width += item_width
-            box = slide.shapes.add_textbox(left, top, item_width, self.nav_row_height)
+            box = slide.shapes.add_textbox(left, top, item_width, row_height)
             tf = box.text_frame
             tf.clear()
             tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -134,31 +136,34 @@ class PresentationBuilder:
                 run.font.color.rgb = self.inactive_color
             left += item_width
             if idx < count - 1:
-                self._draw_vertical_separator(slide, left, top, self.nav_row_height)
-        return top + self.nav_row_height
+                self._draw_vertical_separator(slide, left, top, row_height)
+        return top + row_height
 
-    def _draw_separator(self, slide, top: float) -> float:
+    def _draw_separator(self, slide, top: int) -> int:
         if self._slide_width <= 0:
             raise ValueError("Slide width is not set.")
+        side_margin = int(self.nav_side_margin)
+        sep_height = int(self.nav_separator_width)
         shape = slide.shapes.add_shape(
             MSO_AUTO_SHAPE_TYPE.RECTANGLE,
-            self.nav_side_margin,
+            side_margin,
             top,
-            self._slide_width - self.nav_side_margin * 2,
-            self.nav_separator_width,
+            int(self._slide_width - side_margin * 2),
+            sep_height,
         )
         shape.fill.solid()
         shape.fill.fore_color.rgb = self.inactive_color
         shape.line.fill.background()
         shape.shadow.inherit = False
-        return top + self.nav_separator_width
+        return top + sep_height
 
-    def _draw_vertical_separator(self, slide, x_pos: float, top: float, height: float) -> None:
+    def _draw_vertical_separator(self, slide, x_pos: int, top: int, height: int) -> None:
+        sep_width = int(self.nav_separator_width)
         shape = slide.shapes.add_shape(
             MSO_AUTO_SHAPE_TYPE.RECTANGLE,
-            x_pos - self.nav_separator_width / 2,
+            int(x_pos - sep_width // 2),
             top,
-            self.nav_separator_width,
+            sep_width,
             height,
         )
         shape.fill.solid()
@@ -170,14 +175,14 @@ class PresentationBuilder:
         self,
         slide,
         plan_entry: SlidePlanEntry,
-        nav_bottom: float,
+        nav_bottom: int,
     ) -> None:
         if self._slide_width <= 0 or self._slide_height <= 0:
             raise ValueError("Slide dimensions are not set.")
-        body_top = nav_bottom + self.body_margin_top
-        height = self._slide_height - body_top - Inches(0.5)
-        width = self._slide_width - self.body_side_margin * 2
-        box = slide.shapes.add_textbox(self.body_side_margin, body_top, width, height)
+        body_top = int(nav_bottom + int(self.body_margin_top))
+        height = int(self._slide_height - body_top - int(Inches(0.5)))
+        width = int(self._slide_width - int(self.body_side_margin) * 2)
+        box = slide.shapes.add_textbox(int(self.body_side_margin), body_top, width, height)
         tf = box.text_frame
         tf.clear()
         para = tf.paragraphs[0]
