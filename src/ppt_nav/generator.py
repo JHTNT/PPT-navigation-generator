@@ -31,13 +31,22 @@ def generate_from_markdown(
     builder = PresentationBuilder(font_size=font_size)
     destination = output_path or input_path.with_suffix(".pptx")
 
-    resolved_template: Optional[Path]
+    resolved_template: Path
     if template_path is not None:
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template file not found: {template_path}")
         resolved_template = template_path
     else:
-        # Default to the repo-provided 16:9 template when available.
-        default_template = Path(__file__).resolve().parents[2] / "template" / "template_16-9.pptx"
-        resolved_template = default_template if default_template.exists() else None
+        # Default to the repo-provided 16:9 template.
+        default_template = (
+            Path(__file__).resolve().parents[2] / "template" / "template_16-9.pptx"
+        )
+        if not default_template.exists():
+            raise FileNotFoundError(
+                "Default template not found: template/template_16-9.pptx. "
+                "Provide one via --template."
+            )
+        resolved_template = default_template
 
     builder.build(outline, destination, template_path=resolved_template)
     return destination

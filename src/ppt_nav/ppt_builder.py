@@ -28,8 +28,6 @@ class PresentationBuilder:
         base_nav_height_in = 0.4
         scale = self.font_size_pt / 22.0
         self.nav_row_height = Inches(base_nav_height_in * scale)
-        self._target_width = Inches(16)
-        self._target_height = Inches(9)
         # slide_width/slide_height from python-pptx are int-like EMU values.
         # Keep them as concrete ints to avoid Optional math issues in type checkers.
         self._slide_width: int = 0
@@ -39,19 +37,9 @@ class PresentationBuilder:
         self,
         outline: Outline,
         output_path: Path,
-        template_path: Optional[Path] = None,
-        *,
-        force_widescreen: bool = False,
+        template_path: Path,
     ) -> None:
-        prs = (
-            PresentationFactory(str(template_path))
-            if template_path is not None
-            else PresentationFactory()
-        )
-        # Only force 16:9 when explicitly requested or no template is provided.
-        if template_path is None or force_widescreen:
-            prs.slide_width = self._target_width
-            prs.slide_height = self._target_height
+        prs = PresentationFactory(str(template_path))
         # python-pptx stubs may type these as Optional/Unknown; guard for type checkers.
         slide_width = prs.slide_width
         slide_height = prs.slide_height
