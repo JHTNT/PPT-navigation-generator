@@ -35,10 +35,23 @@ class PresentationBuilder:
         self._slide_width: int = 0
         self._slide_height: int = 0
 
-    def build(self, outline: Outline, output_path: Path) -> None:
-        prs = PresentationFactory()
-        prs.slide_width = self._target_width
-        prs.slide_height = self._target_height
+    def build(
+        self,
+        outline: Outline,
+        output_path: Path,
+        template_path: Optional[Path] = None,
+        *,
+        force_widescreen: bool = False,
+    ) -> None:
+        prs = (
+            PresentationFactory(str(template_path))
+            if template_path is not None
+            else PresentationFactory()
+        )
+        # Only force 16:9 when explicitly requested or no template is provided.
+        if template_path is None or force_widescreen:
+            prs.slide_width = self._target_width
+            prs.slide_height = self._target_height
         # python-pptx stubs may type these as Optional/Unknown; guard for type checkers.
         slide_width = prs.slide_width
         slide_height = prs.slide_height

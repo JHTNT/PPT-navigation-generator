@@ -33,6 +33,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=28.0,
         help="Base font size in points for navigation and content (default: 28).",
     )
+    parser.add_argument(
+        "--template",
+        type=Path,
+        default=None,
+        help="Optional PPTX template path (defaults to bundled template_16-9.pptx when available).",
+    )
     return parser
 
 
@@ -40,11 +46,17 @@ def _handle_build(args: argparse.Namespace) -> int:
     input_path: Path = args.input
     output_path: Path | None = args.output
     font_size: float = args.font_size
+    template_path: Path | None = args.template
 
     try:
         if font_size <= 0:
             raise ValueError("Font size must be positive")
-        destination = generate_from_markdown(input_path, output_path, font_size=font_size)
+        destination = generate_from_markdown(
+            input_path,
+            output_path,
+            font_size=font_size,
+            template_path=template_path,
+        )
     except FileNotFoundError as exc:
         print(str(exc))
         return 1
