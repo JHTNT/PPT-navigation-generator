@@ -62,9 +62,7 @@ def _parse_markdown_lines(lines: Sequence[str]) -> Tuple[OutlineItem, ...]:
 
         indent = len(line) - len(stripped)
         if indent % 2 != 0:
-            raise ValueError(
-                f"Line {line_number}: indentation must use multiples of two spaces."
-            )
+            raise ValueError(f"Line {line_number}: indentation must use multiples of two spaces.")
         level = indent // 2 + 1
         if level > 2:
             raise ValueError("Only two heading levels are supported.")

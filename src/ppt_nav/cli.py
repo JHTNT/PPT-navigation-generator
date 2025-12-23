@@ -11,8 +11,7 @@ from ppt_nav.generator import generate_from_markdown
 def run(argv: Sequence[str] | None = None) -> int:
     """Entry point used by both ``python -m ppt_nav`` and ``ppt-nav``."""
 
-    parsed_args = _build_parser().parse_args(
-        argv if argv is not None else sys.argv[1:])
+    parsed_args = _build_parser().parse_args(argv if argv is not None else sys.argv[1:])
     return _handle_build(parsed_args)
 
 
@@ -39,7 +38,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _handle_build(args: argparse.Namespace) -> int:
     input_path: Path = args.input
-    output_path: str | None = args.output
+    output_path: Path | None = args.output
     font_size: float = args.font_size
 
     try:

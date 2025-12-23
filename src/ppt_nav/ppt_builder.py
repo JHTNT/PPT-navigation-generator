@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Optional
 
-from pptx import Presentation
+from pptx import Presentation as PresentationFactory
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.presentation import Presentation as PptxPresentation
 from pptx.util import Inches, Pt
 
 from ppt_nav.outline import Outline, OutlineItem, SlidePlanEntry
@@ -29,22 +30,29 @@ class PresentationBuilder:
         self.nav_row_height = Inches(base_nav_height_in * scale)
         self._target_width = Inches(16)
         self._target_height = Inches(9)
-        self._slide_width = 0
-        self._slide_height = 0
+        # slide_width/slide_height from python-pptx are int-like EMU values.
+        # Keep them as concrete ints to avoid Optional math issues in type checkers.
+        self._slide_width: int = 0
+        self._slide_height: int = 0
 
     def build(self, outline: Outline, output_path: Path) -> None:
-        prs = Presentation()
+        prs = PresentationFactory()
         prs.slide_width = self._target_width
         prs.slide_height = self._target_height
-        self._slide_width = prs.slide_width
-        self._slide_height = prs.slide_height
+        # python-pptx stubs may type these as Optional/Unknown; guard for type checkers.
+        slide_width = prs.slide_width
+        slide_height = prs.slide_height
+        if slide_width is None or slide_height is None:
+            raise ValueError("Presentation slide dimensions are not set.")
+        self._slide_width = int(slide_width)
+        self._slide_height = int(slide_height)
         for plan_entry in outline.iter_slide_plan():
             self._add_slide(prs, outline.sections, plan_entry)
-        prs.save(output_path)
+        prs.save(str(output_path))
 
     def _add_slide(
         self,
-        prs: Presentation,
+        prs: PptxPresentation,
         sections: Iterable[OutlineItem],
         plan_entry: SlidePlanEntry,
     ) -> None:
@@ -75,6 +83,8 @@ class PresentationBuilder:
     def _draw_nav_row(self, slide, titles, active_title: Optional[str], top: float) -> float:
         if not titles:
             return top
+        if self._slide_width <= 0:
+            raise ValueError("Slide width is not set.")
         count = len(titles)
         usable_width = self._slide_width - self.nav_side_margin * 2
         # Keep a constant padding share per tab so whitespace feels uniform, then add
@@ -115,6 +125,8 @@ class PresentationBuilder:
         return top + self.nav_row_height
 
     def _draw_separator(self, slide, top: float) -> float:
+        if self._slide_width <= 0:
+            raise ValueError("Slide width is not set.")
         shape = slide.shapes.add_shape(
             MSO_AUTO_SHAPE_TYPE.RECTANGLE,
             self.nav_side_margin,
@@ -147,6 +159,8 @@ class PresentationBuilder:
         plan_entry: SlidePlanEntry,
         nav_bottom: float,
     ) -> None:
+        if self._slide_width <= 0 or self._slide_height <= 0:
+            raise ValueError("Slide dimensions are not set.")
         body_top = nav_bottom + self.body_margin_top
         height = self._slide_height - body_top - Inches(0.5)
         width = self._slide_width - self.body_side_margin * 2
