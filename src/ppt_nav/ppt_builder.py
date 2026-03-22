@@ -19,17 +19,30 @@ class PresentationBuilder:
     def __init__(self, font_size: Optional[float] = None) -> None:
         self.nav_side_margin = Inches(0)
         self.nav_top_margin = Inches(0)
-        self.nav_separator_width = Inches(0.04)
-        self.body_margin_top = Inches(0.4)
+        self.body_margin_top = Inches(0.3)
         self.body_side_margin = Inches(0.5)
-        self.inactive_color = RGBColor(200, 200, 200)
-        self.active_color = RGBColor(0, 0, 0)
+
+        # Theme palette; can be overridden from CLI via --color.
+        self.main_bg_color = RGBColor(141, 175, 208)
+        self.main_inactive_text = RGBColor(245, 248, 252)
+        self.main_active_chip_bg = RGBColor(189, 212, 234)
+        self.main_active_text = RGBColor(43, 109, 180)
+        self.sub_inactive_text = RGBColor(154, 154, 154)
+        self.sub_active_text = RGBColor(43, 109, 180)
+        self.sub_line_color = RGBColor(130, 175, 220)
+
         # Base font size in points for navigation and body
         self.font_size_pt = font_size if font_size and font_size > 0 else 22.0
-        # Scale navigation row height with font size (22pt -> 0.4" baseline)
-        base_nav_height_in = 0.4
+        self.sub_font_size_pt = max(self.font_size_pt * 0.84, 12.0)
+        # Scale navigation row heights with font size (22pt baseline).
+        base_main_nav_height_in = 0.56
+        base_sub_nav_height_in = 0.30
         scale = self.font_size_pt / 22.0
-        self.nav_row_height = Inches(base_nav_height_in * scale)
+        self.main_nav_row_height = Inches(base_main_nav_height_in * scale)
+        self.sub_nav_row_height = Inches(base_sub_nav_height_in * scale)
+        self.sub_nav_side_margin = Inches(0.14)
+        self.sub_nav_line_thickness = Inches(0.03)
+        self.sub_nav_label_gap = Inches(0.1)
         # slide_width/slide_height from python-pptx are int-like EMU values.
         # Keep them as concrete ints to avoid Optional math issues in type checkers.
         self._slide_width: int = 0
@@ -91,92 +104,202 @@ class PresentationBuilder:
         current_child = plan_entry.child
         top = int(self.nav_top_margin)
         section_titles = [section.title for section in sections]
-        top = self._draw_nav_row(slide, section_titles, current_section.title, top)
-        top = self._draw_separator(slide, top)
+        top = self._draw_main_navigation_row(slide, section_titles, current_section.title, top)
         if current_section.children:
             child_titles = [child.title for child in current_section.children]
             active_child = current_child.title if current_child else None
-            top = self._draw_nav_row(slide, child_titles, active_child, top)
-            top = self._draw_separator(slide, top)
+            top = self._draw_sub_navigation_row(slide, child_titles, active_child, top)
         return top
 
-    def _draw_nav_row(self, slide, titles, active_title: Optional[str], top: int) -> int:
+    def _draw_main_navigation_row(
+        self, slide, titles, active_title: Optional[str], top: int
+    ) -> int:
         if not titles:
             return top
         if self._slide_width <= 0:
             raise ValueError("Slide width is not set.")
+        row_height = int(self.main_nav_row_height)
+        bg = slide.shapes.add_shape(
+            MSO_AUTO_SHAPE_TYPE.RECTANGLE,
+            int(self.nav_side_margin),
+            top,
+            int(self._slide_width - int(self.nav_side_margin) * 2),
+            row_height,
+        )
+        self._style_solid_shape(bg, self.main_bg_color)
+
         count = len(titles)
-        side_margin = int(self.nav_side_margin)
-        usable_width = int(self._slide_width - side_margin * 2)
-        # Keep a constant padding share per tab so whitespace feels uniform, then add
-        # extra width based on character count to honor the "size by words" request.
-        char_counts = [max(len(title.strip()) or len(title), 1) for title in titles]
-        avg_chars = sum(char_counts) / count
-        base_weight = max(int(avg_chars * 0.5), 4)
-        tab_weights = [base_weight + chars for chars in char_counts]
-        total_weight = sum(tab_weights)
-        left = side_margin
-        allocated_width = 0
-        row_height = int(self.nav_row_height)
+        base_tab_width = int(self._slide_width // count)
         for idx, title in enumerate(titles):
-            weight = tab_weights[idx]
+            left = idx * base_tab_width
             if idx == count - 1:
-                item_width = usable_width - allocated_width
+                item_width = int(self._slide_width - left)
             else:
-                item_width = int(round(usable_width * (weight / total_weight)))
-                allocated_width += item_width
-            box = slide.shapes.add_textbox(left, top, item_width, row_height)
-            tf = box.text_frame
-            tf.clear()
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            tf.margin_left = tf.margin_right = 0
-            para = tf.paragraphs[0]
-            para.alignment = PP_ALIGN.CENTER
-            run = para.add_run()
-            run.text = title
-            run.font.size = Pt(self.font_size_pt)
+                item_width = base_tab_width
+
             if title == active_title:
-                run.font.bold = True
-                run.font.color.rgb = self.active_color
-            else:
-                run.font.bold = True
-                run.font.color.rgb = self.inactive_color
-            left += item_width
-            if idx < count - 1:
-                self._draw_vertical_separator(slide, left, top, row_height)
+                # Make the chip taller and size width by title length while
+                # keeping it inside the tab area.
+                chip_margin_y = max(int(row_height * 0.12), int(Inches(0.02)))
+                chip_height = int(row_height - chip_margin_y * 2)
+                chip_padding_x = int(Inches(0.24))
+                estimated_text_width = self._estimate_text_width_emu(title, self.font_size_pt)
+                desired_chip_width = int(estimated_text_width + chip_padding_x * 2)
+                max_chip_width = int(max(item_width - int(Inches(0.1)), int(item_width * 0.6)))
+                min_chip_width = int(min(item_width, max(estimated_text_width, int(Inches(0.95)))))
+                chip_width = max(min(desired_chip_width, max_chip_width), min_chip_width)
+                chip_margin_x = int(max((item_width - chip_width) // 2, 0))
+                chip = slide.shapes.add_shape(
+                    MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+                    int(left + chip_margin_x),
+                    int(top + chip_margin_y),
+                    chip_width,
+                    chip_height,
+                )
+                self._style_solid_shape(chip, self.main_active_chip_bg)
+                chip.adjustments[0] = 0.2
+
+            self._add_centered_label(
+                slide,
+                title,
+                int(left),
+                top,
+                int(item_width),
+                row_height,
+                self.main_active_text if title == active_title else self.main_inactive_text,
+            )
         return top + row_height
 
-    def _draw_separator(self, slide, top: int) -> int:
+    def _draw_sub_navigation_row(self, slide, titles, active_title: Optional[str], top: int) -> int:
         if self._slide_width <= 0:
             raise ValueError("Slide width is not set.")
-        side_margin = int(self.nav_side_margin)
-        sep_height = int(self.nav_separator_width)
-        shape = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.RECTANGLE,
-            side_margin,
-            top,
-            int(self._slide_width - side_margin * 2),
-            sep_height,
-        )
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = self.inactive_color
-        shape.line.fill.background()
-        shape.shadow.inherit = False
-        return top + sep_height
 
-    def _draw_vertical_separator(self, slide, x_pos: int, top: int, height: int) -> None:
-        sep_width = int(self.nav_separator_width)
-        shape = slide.shapes.add_shape(
+        row_height = int(self.sub_nav_row_height)
+        line_thickness = int(self.sub_nav_line_thickness)
+        center_y = int(top + row_height // 2)
+        side_margin = int(self.sub_nav_side_margin)
+
+        left_line_start = side_margin
+        left_line_end = int(left_line_start + int(Inches(0.40)))
+        left_line = slide.shapes.add_shape(
             MSO_AUTO_SHAPE_TYPE.RECTANGLE,
-            int(x_pos - sep_width // 2),
-            top,
-            sep_width,
-            height,
+            left_line_start,
+            int(center_y),
+            int(left_line_end - left_line_start),
+            line_thickness,
         )
+        self._style_solid_shape(left_line, self.sub_line_color)
+
+        labels_left = int(left_line_end + int(self.sub_nav_label_gap))
+        labels_right = int(self._slide_width - side_margin - int(Inches(0.35)))
+        cursor = labels_left
+        item_gap = int(Inches(0.08))
+        min_label_width = int(Inches(0.35))
+
+        if titles and labels_right > labels_left:
+            preferred_widths = [
+                max(self._estimate_text_width_emu(title, self.sub_font_size_pt) + int(Inches(0.03)), min_label_width)
+                for title in titles
+            ]
+            for idx, title in enumerate(titles):
+                remaining = max(labels_right - cursor, 0)
+                if remaining <= 0:
+                    break
+                preferred = preferred_widths[idx]
+                titles_left = len(titles) - idx - 1
+                reserved_tail = max(titles_left * (min_label_width + item_gap), 0)
+                max_width_now = max(remaining - reserved_tail, min_label_width)
+                if idx == len(titles) - 1:
+                    width = min(preferred, remaining)
+                else:
+                    width = min(preferred, max_width_now)
+                self._add_left_label(
+                    slide,
+                    title,
+                    cursor,
+                    top,
+                    width,
+                    row_height,
+                    self.sub_active_text if title == active_title else self.sub_inactive_text,
+                    self.sub_font_size_pt,
+                )
+                cursor += int(width + item_gap)
+
+        right_line_start = int(min(max(cursor, labels_left), self._slide_width - side_margin))
+        right_line_end = int(self._slide_width - side_margin)
+        if right_line_end > right_line_start:
+            right_line = slide.shapes.add_shape(
+                MSO_AUTO_SHAPE_TYPE.RECTANGLE,
+                right_line_start,
+                int(center_y),
+                int(right_line_end - right_line_start),
+                line_thickness,
+            )
+            self._style_solid_shape(right_line, self.sub_line_color)
+
+        return top + row_height
+
+    def _style_solid_shape(self, shape, fill_color: RGBColor) -> None:
         shape.fill.solid()
-        shape.fill.fore_color.rgb = self.inactive_color
+        shape.fill.fore_color.rgb = fill_color
         shape.line.fill.background()
         shape.shadow.inherit = False
+
+    def _add_centered_label(
+        self,
+        slide,
+        text: str,
+        left: int,
+        top: int,
+        width: int,
+        height: int,
+        color: RGBColor,
+    ) -> None:
+        box = slide.shapes.add_textbox(left, top, width, height)
+        tf = box.text_frame
+        tf.clear()
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = tf.margin_right = 0
+        para = tf.paragraphs[0]
+        para.alignment = PP_ALIGN.CENTER
+        run = para.add_run()
+        run.text = text
+        run.font.bold = True
+        run.font.size = Pt(self.font_size_pt)
+        run.font.color.rgb = color
+        run.font.name = self.body_font_latin
+
+    def _add_left_label(
+        self,
+        slide,
+        text: str,
+        left: int,
+        top: int,
+        width: int,
+        height: int,
+        color: RGBColor,
+        font_size_pt: float,
+    ) -> None:
+        box = slide.shapes.add_textbox(left, top, width, height)
+        tf = box.text_frame
+        tf.clear()
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = tf.margin_right = 0
+        para = tf.paragraphs[0]
+        para.alignment = PP_ALIGN.CENTER
+        run = para.add_run()
+        run.text = text
+        run.font.bold = True
+        run.font.size = Pt(font_size_pt)
+        run.font.color.rgb = color
+        run.font.name = self.body_font_latin
+
+    def _estimate_text_width_emu(self, text: str, font_size_pt: float) -> int:
+        # Approximate average glyph width with a slight floor so very short
+        # labels still get stable layout.
+        char_count = max(len(text.strip()), 1)
+        width_pt = max(char_count * font_size_pt * 0.57, font_size_pt * 1.8)
+        return int(width_pt * 12700)
 
     def _add_body_placeholder(
         self,
