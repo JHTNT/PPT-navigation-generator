@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -197,22 +198,25 @@ class PresentationBuilder:
         min_label_width = int(Inches(0.35))
 
         if titles and labels_right > labels_left:
+            text_padding = int(Inches(0.08))
             preferred_widths = [
-                max(self._estimate_text_width_emu(title, self.sub_font_size_pt) + int(Inches(0.03)), min_label_width)
+                max(
+                    self._estimate_text_width_emu(title, self.sub_font_size_pt) + text_padding,
+                    min_label_width,
+                )
                 for title in titles
             ]
+            target_widths = self._fit_widths_to_space(
+                preferred_widths,
+                int(labels_right - labels_left),
+                item_gap,
+                min_label_width,
+            )
             for idx, title in enumerate(titles):
                 remaining = max(labels_right - cursor, 0)
                 if remaining <= 0:
                     break
-                preferred = preferred_widths[idx]
-                titles_left = len(titles) - idx - 1
-                reserved_tail = max(titles_left * (min_label_width + item_gap), 0)
-                max_width_now = max(remaining - reserved_tail, min_label_width)
-                if idx == len(titles) - 1:
-                    width = min(preferred, remaining)
-                else:
-                    width = min(preferred, max_width_now)
+                width = min(target_widths[idx], remaining)
                 self._add_left_label(
                     slide,
                     title,
@@ -295,11 +299,65 @@ class PresentationBuilder:
         run.font.name = self.body_font_latin
 
     def _estimate_text_width_emu(self, text: str, font_size_pt: float) -> int:
-        # Approximate average glyph width with a slight floor so very short
-        # labels still get stable layout.
-        char_count = max(len(text.strip()), 1)
-        width_pt = max(char_count * font_size_pt * 0.57, font_size_pt * 1.8)
+        # Estimate width by character category to reduce over/under-estimation
+        # for mixed-case English, digits, spaces, and CJK text.
+        stripped = text.strip()
+        if not stripped:
+            stripped = " "
+
+        em_width = 0.0
+        for ch in stripped:
+            if ch.isspace():
+                em_width += 0.32
+            elif self._is_cjk_char(ch):
+                em_width += 1.0
+            elif ch in "ilI.,:;'`!|":
+                em_width += 0.3
+            elif ch in "MW@#%&":
+                em_width += 0.8
+            elif ch.isupper():
+                em_width += 0.65
+            elif ch.islower():
+                em_width += 0.5
+            elif ch.isdigit():
+                em_width += 0.55
+            else:
+                em_width += 0.5
+
+        width_pt = max(em_width * font_size_pt, font_size_pt * 1.2)
         return int(width_pt * 12700)
+
+    def _is_cjk_char(self, ch: str) -> bool:
+        return unicodedata.east_asian_width(ch) in {"W", "F"}
+
+    def _fit_widths_to_space(
+        self,
+        preferred_widths: list[int],
+        available_width: int,
+        item_gap: int,
+        min_width: int,
+    ) -> list[int]:
+        count = len(preferred_widths)
+        if count == 0:
+            return []
+
+        usable = max(available_width - item_gap * max(count - 1, 0), count)
+        preferred_total = sum(preferred_widths)
+        if preferred_total <= usable:
+            return preferred_widths
+
+        scale = usable / preferred_total
+        scaled = [max(min_width, int(round(width * scale))) for width in preferred_widths]
+
+        total = sum(scaled)
+        while total > usable:
+            idx = max(range(count), key=lambda i: scaled[i])
+            if scaled[idx] <= min_width:
+                break
+            scaled[idx] -= 1
+            total -= 1
+
+        return scaled
 
     def _add_body_placeholder(
         self,
