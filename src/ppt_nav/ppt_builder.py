@@ -7,6 +7,8 @@ from pptx import Presentation as PresentationFactory
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.presentation import Presentation as PptxPresentation
 from pptx.util import Inches, Pt
 
@@ -32,6 +34,23 @@ class PresentationBuilder:
         # Keep them as concrete ints to avoid Optional math issues in type checkers.
         self._slide_width: int = 0
         self._slide_height: int = 0
+
+        # Default fonts for body textboxes: Latin and East Asian.
+        # Note: PowerPoint uses separate font slots; setting only `font.name`
+        # often doesn't affect CJK rendering, so we also set `a:ea` explicitly.
+        self.body_font_latin = "Times New Roman"
+        self.body_font_east_asian = "標楷體"
+
+    def _set_paragraph_default_fonts(self, paragraph) -> None:
+        pPr = paragraph._p.get_or_add_pPr()
+        defRPr = pPr.get_or_add_defRPr()
+        defRPr.get_or_add_latin().typeface = self.body_font_latin
+
+        ea = defRPr.find(qn("a:ea"))
+        if ea is None:
+            ea = OxmlElement("a:ea")
+            defRPr.append(ea)
+        ea.set("typeface", self.body_font_east_asian)
 
     def build(
         self,
@@ -179,5 +198,8 @@ class PresentationBuilder:
         tf.paragraphs[0].space_before = 0
         tf.paragraphs[0].line_spacing = 1.1
         para.font.size = Pt(self.font_size_pt)
+        self._set_paragraph_default_fonts(para)
         para.text = ""
-        tf.add_paragraph()
+        extra_para = tf.add_paragraph()
+        extra_para.font.size = Pt(self.font_size_pt)
+        self._set_paragraph_default_fonts(extra_para)
